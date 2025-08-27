@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cuisine de Lin</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <title>OrderFlow</title>
+    <!-- Use relative path -->
+    <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🍽️ Cuisine de Lin</h1>
+            <h1>🍽️ OrderFlow</h1>
             <div class="header-controls">
                 <div class="language-toggle">
                     <button class="lang-btn active" data-lang="en">EN</button>
@@ -28,15 +29,11 @@
             <div class="order-section">
                 <div class="menu-panel">
                     <h2><span class="text" data-key="menu">📋 Menu</span></h2>
-                    <div class="menu-items" id="menu-items">
-                        <!-- Menu items will be populated here -->
-                    </div>
+                    <div class="menu-items" id="menu-items"></div>
                     
                     <div class="extras">
                         <h3><span class="text" data-key="addExtras">➕ Add Extras</span></h3>
-                        <div class="extra-items" id="extra-items">
-                            <!-- Extra items will be populated here -->
-                        </div>
+                        <div class="extra-items" id="extra-items"></div>
                     </div>
                 </div>
 
@@ -46,19 +43,15 @@
                         <div class="current-order" id="current-order">
                             <p class="empty-message text" data-key="selectItems">Select items from the menu to start an order</p>
                         </div>
-                        
                         <button class="clear-order" id="clear-order-btn">🗑️ <span class="text" data-key="clearOrder">Clear Order</span></button>
-                        
                         <div class="customer-info">
                             <input type="text" id="customer-name" class="text" data-key="customerName" />
                         </div>
-                        
                         <div class="payment-options">
                             <h3>💳 <span class="text" data-key="payment">Payment</span></h3>
                             <button class="payment-btn selected" id="cash-btn">💵 <span class="text" data-key="cashPaid">Cash (Paid)</span></button>
                             <button class="payment-btn" id="card-btn">💳 <span class="text" data-key="cardPending">Card (Pending)</span></button>
                         </div>
-                        
                         <button class="submit-order" id="submit-order-btn">✅ <span class="text" data-key="submitOrder">Submit Order</span></button>
                     </div>
 
@@ -107,9 +100,7 @@
                     <input type="text" id="new-menu-item" class="text" data-key="enterMenuItemName" />
                     <button class="add-btn" id="add-menu-btn">➕ <span class="text" data-key="addItem">Add Item</span></button>
                 </div>
-                <div class="menu-list" id="menu-list">
-                    <!-- Menu items list will be populated here -->
-                </div>
+                <div class="menu-list" id="menu-list"></div>
             </div>
 
             <div class="menu-management">
@@ -118,9 +109,7 @@
                     <input type="text" id="new-extra-item" class="text" data-key="enterExtraItemName" />
                     <button class="add-btn" id="add-extra-btn">➕ <span class="text" data-key="addExtra">Add Extra</span></button>
                 </div>
-                <div class="menu-list" id="extra-list">
-                    <!-- Extra items list will be populated here -->
-                </div>
+                <div class="menu-list" id="extra-list"></div>
             </div>
         </div>
     </div>
@@ -136,16 +125,22 @@
             <h2>🏪 <span class="text" data-key="endOfDayTitle">End of Day</span></h2>
             <p class="text" data-key="endOfDayMessage">This will save today's data and reset everything for tomorrow. All current orders and counters will be cleared. Are you sure?</p>
             <div class="modal-actions">
-                <button class="modal-btn cancel" id="cancel-end-day">
-                    <span class="text" data-key="cancel">Cancel</span>
-                </button>
-                <button class="modal-btn confirm" id="confirm-end-day">
-                    🏪 <span class="text" data-key="confirmEndDay">Yes, End Day</span>
-                </button>
+                <button class="modal-btn cancel" id="cancel-end-day"><span class="text" data-key="cancel">Cancel</span></button>
+                <button class="modal-btn confirm" id="confirm-end-day">🏪 <span class="text" data-key="confirmEndDay">Yes, End Day</span></button>
             </div>
         </div>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script defer src="/js/app.js"></script>
+
+    <!-- Socket.IO: only load if not on GitHub Pages -->
+    <script>
+      window.IS_PAGES = location.hostname.endsWith('github.io');
+      if (!window.IS_PAGES) {
+        var s = document.createElement('script');
+        s.src = '/socket.io/socket.io.js';
+        document.head.appendChild(s);
+      }
+    </script>
+    <!-- Always load app.js relatively -->
+    <script defer src="./js/app.js"></script>
 </body>
 </html>
