@@ -512,15 +512,34 @@ async function submitOrder() {
 
   // Envoi au serveur -> il diffusera order:created
   try {
-    const r = await fetch('/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(order)
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) {
-    console.warn('POST /orders failed (offline ?)', e);
+  const r = await fetch('/orders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(order)
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+
+  const { order: serverOrder } = await r.json();
+  if (serverOrder && serverOrder.id !== order.id) {
+    const idx = orders.findIndex(o => o.id === order.id);
+    if (idx !== -1) {
+      orders[idx].id = serverOrder.id;
+    }
+    // Optionnel: garder le timestamp/format serveur si différent
+    if (serverOrder.timestamp) {
+      orders[idx].timestamp = serverOrder.timestamp;
+    }
+    saveData();
+    // Rafraîchir les vues pour refléter le nouvel ID
+    renderActiveOrders();
+    if (document.getElementById('kitchen-display').classList.contains('active')) {
+      renderKitchenDisplay();
+    }
   }
+} catch (e) {
+  console.warn('POST /orders failed (offline ?)', e);
+}
+
 }
 
 
@@ -875,6 +894,15 @@ async function endOfDay() {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
     } catch (e) {
         showToast('Failed to write daily files. Data kept locally.', 'error', 3000);
+    }
+    try {
+        // Option A (recommandée): endpoint REST côté serveur
+        await fetch('/orders/reset', { method: 'POST' }); // NEW
+
+        // Option B (si tu préfères via socket en plus / à la place)
+        if (socket) socket.emit('orders:reset'); // NEW
+    } catch (e) {
+        console.warn('Failed to reset server orders', e);
     }
 
     // Reset all data for new day
