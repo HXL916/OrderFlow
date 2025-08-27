@@ -7,43 +7,7 @@ let currentOrder = [];
 let selectedExtras = [];
 let selectedPayment = 'cash';
 let currentLanguage = 'en';
-let socket = {
-  on() {},
-  off() {},
-  emit() {}
-};
-
-/* ---------- Pages-safe API + Socket bootstrap ---------- */
-
-// Allow ?api=https://your-backend.example.com override on Pages
-const urlApiParam = new URLSearchParams(location.search).get('api');
-if (urlApiParam) localStorage.setItem('ORDERFLOW_API', urlApiParam);
-
-// Use local setting or same-origin (works locally)
-const API_BASE = localStorage.getItem('ORDERFLOW_API') || location.origin;
-
-// Safe socket placeholder (no-op) so the rest of the app never crashes
-
-
-// Try to connect to Socket.IO only if the client lib is present
-function tryInitSocket() {
-  if (!window.io) {
-    console.info('Socket.IO client not found; continuing without realtime.');
-    return;
-  }
-  try {
-    socket = io(API_BASE, { transports: ['websocket'], withCredentials: false });
-    console.log('Socket.IO connected to', API_BASE);
-  } catch (e) {
-    console.warn('Socket.IO connection failed:', e);
-  }
-}
-
-// Run after the page is fully parsed to avoid blocking init
-document.addEventListener('DOMContentLoaded', () => {
-  tryInitSocket(); // won’t crash if missing
-});
-
+let socket = null;
 
 async function fetchOrdersFromServer() {
   try {
