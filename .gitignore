@@ -68,3 +68,4 @@ build/
 *.backup
 /.history
 /Dailys
+data/orders.json

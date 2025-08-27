@@ -1,11 +1,22 @@
 {
-  "name": "cuisine-de-lin",
+  "name": "orderflow",
   "version": "1.0.0",
-  "description": "Restaurant order management system for Cuisine de Lin",
-  "main": "index.html",
+  "description": "Local restaurant order management system for kitchen ↔ cashier (real-time)",
+  "main": "cli.js",
+  "bin": "cli.js",
+  "pkg": {
+    "assets": [
+      "index.html",
+      "css/**/*",
+      "js/**/*",
+      "data/**/*",
+      "Dailys/**/*"
+    ]
+  },
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "exe": "pkg . --targets node18-win-x64 --output dist/OrderFlow.exe"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -13,7 +24,8 @@
   },
   "devDependencies": {
     "http-server": "^14.1.1",
-    "live-server": "^1.2.2"
+    "live-server": "^1.2.2",
+    "pkg": "^5.8.1"
   },
   "keywords": [
     "restaurant",
