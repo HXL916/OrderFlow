@@ -7,6 +7,18 @@ let currentOrder = [];
 let selectedExtras = [];
 let selectedPayment = 'cash';
 let currentLanguage = 'en';
+let socket = null;
+
+async function fetchOrdersFromServer() {
+  try {
+    const r = await fetch('/orders', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    orders = Array.isArray(data.orders) ? data.orders : [];
+  } catch (e) {
+    console.warn('fetch /orders failed', e);
+  }
+}
 
 // Default menu configuration
 const defaultMenuConfig = {
@@ -130,11 +142,48 @@ const translations = {
     }
 };
 
+/* ---------------------------
+   Toast notifications (left)
+   --------------------------- */
+function ensureToastContainer() {
+  let c = document.getElementById('toast-container');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'toast-container';
+    c.style.position = 'fixed';
+    c.style.left = '12px';
+    c.style.bottom = '12px';
+    c.style.display = 'flex';
+    c.style.flexDirection = 'column';
+    c.style.gap = '8px';
+    c.style.zIndex = '9999';
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+function showToast(message, type = 'info', timeout = 2500) {
+  const c = ensureToastContainer();
+  const t = document.createElement('div');
+  t.textContent = message;
+  t.style.padding = '10px 12px';
+  t.style.borderRadius = '8px';
+  t.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)';
+  t.style.background = (type === 'error') ? '#fef0f0' : (type === 'success') ? '#eefcf2' : '#f3f4f6';
+  t.style.border = (type === 'error') ? '1px solid #f5c2c7' : (type === 'success') ? '1px solid #b6e3c6' : '1px solid #d1d5db';
+  t.style.color = '#111827';
+  t.style.font = '14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+  c.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity .25s';
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 250);
+  }, timeout);
+}
+
 // Language management
 function updateLanguage() {
     const t = translations[currentLanguage];
-    
-    // Update all text elements
     document.querySelectorAll('.text').forEach(element => {
         const key = element.getAttribute('data-key');
         if (key && t[key]) {
@@ -145,8 +194,6 @@ function updateLanguage() {
             }
         }
     });
-
-    // Update button texts
     document.querySelectorAll('.btn-text').forEach((element, index) => {
         const keys = ['takeOrders', 'kitchenDisplay', 'menuManagement'];
         if (t[keys[index]]) {
@@ -157,45 +204,78 @@ function updateLanguage() {
 
 // Initialize the app
 async function initApp() {
-    loadData();                       // safe before DOM rendering
-    await loadMenuFromJson();         // ⬅️ wait for menu.json
-    setupEventListeners();
-    updateLanguage();
-    renderMenuItems();
-    renderExtraItems();
-    renderMenuManagement();
-    renderKitchenDisplay();
-    renderActiveOrders();
+  loadData();
+  await loadMenuFromJson();
+
+  await fetchOrdersFromServer();
+
+  setupRealtime();
+
+  setupEventListeners();
+  updateLanguage();
+  renderMenuItems();
+  renderExtraItems();
+  renderMenuManagement();
+  renderKitchenDisplay();
+  renderActiveOrders();
 }
 
-// Load menu from JSON file
+
+// Load menu from backend (fallback to defaults)
 async function loadMenuFromJson() {
-    try {
-        const response = await fetch('/data/menu.json', {
-            cache: 'no-cache',
-            headers: { 'Accept': 'application/json' }
-        });// fixed: use absolute path
-        if (response.ok) {
-            const menuConfig = await response.json();
-            if (menuConfig.menuItems && menuConfig.extraItems) {
-                menuItems = menuConfig.menuItems;
-                extraItems = menuConfig.extraItems;
-            } else {
-                // Fallback to default if JSON is invalid
-                menuItems = [...defaultMenuConfig.menuItems];
-                extraItems = [...defaultMenuConfig.extraItems];
-            }
-        } else {
-            // Fallback to default if file doesn't exist
-            menuItems = [...defaultMenuConfig.menuItems];
-            extraItems = [...defaultMenuConfig.extraItems];
-        }
-    } catch (error) {
-        console.warn('Could not load menu.json, using defaults:', error);
-        menuItems = [...defaultMenuConfig.menuItems];
-        extraItems = [...defaultMenuConfig.extraItems];
+  try {
+    const res = await fetch('/menu', { cache: 'no-cache', headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const cfg = await res.json();
+    if (Array.isArray(cfg.menuItems) && Array.isArray(cfg.extraItems)) {
+      menuItems = cfg.menuItems;
+      extraItems = cfg.extraItems;
+      return;
     }
+  } catch (e) {
+    console.warn('Failed to load /menu, using defaults:', e);
+  }
+  menuItems = [...defaultMenuConfig.menuItems];
+  extraItems = [...defaultMenuConfig.extraItems];
 }
+
+function setupRealtime() {
+  if (!window.io) {
+    console.warn('Socket.IO client not found');
+    return;
+  }
+  socket = io();
+
+  // État initial envoyé par le serveur à la connexion
+  socket.on('orders:init', (serverOrders) => {
+    orders = Array.isArray(serverOrders) ? serverOrders : [];
+    renderKitchenDisplay();
+    renderActiveOrders();
+  });
+
+  // Une commande a été créée quelque part
+  socket.on('order:created', (order) => {
+    if (!orders.find(o => o.id === order.id)) orders.unshift(order);
+    renderKitchenDisplay();
+    renderActiveOrders();
+  });
+
+  // Une commande a été terminée quelque part
+  socket.on('order:completed', ({ id }) => {
+    const o = orders.find(x => x.id === id);
+    if (o) o.status = 'completed';
+    renderKitchenDisplay();
+    renderActiveOrders();
+  });
+
+  // Reset global (fin de journée)
+  socket.on('orders:reset', () => {
+    orders = [];
+    renderKitchenDisplay();
+    renderActiveOrders();
+  });
+}
+
 
 // Event listeners
 function setupEventListeners() {
@@ -222,10 +302,7 @@ function setupEventListeners() {
             document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(viewId).classList.add('active');
             this.classList.add('active');
-            
-            if (viewId === 'kitchen-display') {
-                renderKitchenDisplay();
-            }
+            if (viewId === 'kitchen-display') renderKitchenDisplay();
         });
     });
 
@@ -256,22 +333,13 @@ function setupEventListeners() {
     document.getElementById('confirm-end-day').addEventListener('click', endOfDay);
 
     // Enter key support
-    document.getElementById('new-menu-item').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') addMenuItem();
-    });
-    document.getElementById('new-extra-item').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') addExtraItem();
-    });
+    document.getElementById('new-menu-item').addEventListener('keydown', e => { if (e.key === 'Enter') addMenuItem(); });
+    document.getElementById('new-extra-item').addEventListener('keydown', e => { if (e.key === 'Enter') addExtraItem(); });
 }
 
 // Data persistence
 function saveData() {
-    const data = {
-        menuItems,
-        extraItems,
-        orders,
-        orderCounter
-    };
+    const data = { menuItems, extraItems, orders, orderCounter };
     localStorage.setItem('restaurantData', JSON.stringify(data));
 }
 
@@ -281,19 +349,13 @@ function loadData() {
         const data = JSON.parse(saved);
         orders = data.orders || [];
         orderCounter = data.orderCounter || 1;
-        // Don't load menuItems and extraItems from localStorage
-        // They should come from JSON file instead
     }
-    
-    // Load language preference
     const savedLang = localStorage.getItem('restaurantLanguage');
     if (savedLang) {
         currentLanguage = savedLang;
         document.querySelectorAll('.lang-btn').forEach(btn => {
             btn.classList.remove('active');
-            if (btn.getAttribute('data-lang') === savedLang) {
-                btn.classList.add('active');
-            }
+            if (btn.getAttribute('data-lang') === savedLang) btn.classList.add('active');
         });
     }
 }
@@ -302,7 +364,6 @@ function loadData() {
 function renderMenuItems() {
     const container = document.getElementById('menu-items');
     container.innerHTML = '';
-    
     menuItems.forEach(item => {
         const button = document.createElement('button');
         button.className = 'menu-item';
@@ -315,7 +376,6 @@ function renderMenuItems() {
 function renderExtraItems() {
     const container = document.getElementById('extra-items');
     container.innerHTML = '';
-    
     extraItems.forEach(item => {
         const button = document.createElement('button');
         button.className = 'extra-item';
@@ -327,20 +387,12 @@ function renderExtraItems() {
 
 // Order management
 function addToOrder(item) {
-    const orderItem = {
-        name: item,
-        extras: [...selectedExtras]
-    };
-    
+    const orderItem = { name: item, extras: [...selectedExtras] };
     currentOrder.push(orderItem);
     selectedExtras = [];
-    
-    // Clear selected extras visually
-    document.querySelectorAll('.extra-item').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    
+    document.querySelectorAll('.extra-item').forEach(btn => btn.classList.remove('selected'));
     renderCurrentOrder();
+    showToast(`+ ${item}`, 'success', 1500); // quick feedback on add
 }
 
 function toggleExtra(extra, button) {
@@ -356,30 +408,22 @@ function toggleExtra(extra, button) {
 function renderCurrentOrder() {
     const container = document.getElementById('current-order');
     const t = translations[currentLanguage];
-    
     if (currentOrder.length === 0) {
         container.innerHTML = `<p class="empty-message">${t.selectItems}</p>`;
         return;
     }
-    
     container.innerHTML = '';
-    
     currentOrder.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = 'order-item';
-        
-        const extrasText = item.extras.length > 0 ? 
-            `<div class="order-extras">+ ${item.extras.join(', ')}</div>` : '';
-        
+        const extrasText = item.extras.length > 0 ? `<div class="order-extras">+ ${item.extras.join(', ')}</div>` : '';
         div.innerHTML = `
             <button class="remove-item" onclick="removeFromOrder(${index})">✕</button>
             <h4>${item.name}</h4>
             ${extrasText}
         `;
-        
         container.appendChild(div);
     });
-    
     renderActiveOrders();
 }
 
@@ -392,12 +436,7 @@ function clearOrder() {
     currentOrder = [];
     selectedExtras = [];
     document.getElementById('customer-name').value = '';
-    
-    // Clear selected extras visually
-    document.querySelectorAll('.extra-item').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    
+    document.querySelectorAll('.extra-item').forEach(btn => btn.classList.remove('selected'));
     renderCurrentOrder();
 }
 
@@ -408,63 +447,66 @@ function selectPayment(type) {
     document.getElementById(`${type}-btn`).classList.add('selected');
 }
 
-function submitOrder() {
-    const t = translations[currentLanguage];
-    
-    if (currentOrder.length === 0) {
-        alert(t.pleaseAddItems);
-        return;
-    }
-    
-    const customerName = document.getElementById('customer-name').value.trim() || `${t.order} #${orderCounter}`;
-    
-    const order = {
-        id: orderCounter++,
-        customerName,
-        items: [...currentOrder],
-        paymentType: selectedPayment,
-        status: 'pending',
-        timestamp: new Date().toLocaleString()
-    };
-    
-    orders.unshift(order);
-    saveData();
-    clearOrder();
-    
-    alert(`${t.orderSubmitted}${order.id}`);
-    
-    renderActiveOrders();
-    
-    if (document.getElementById('kitchen-display').classList.contains('active')) {
-        renderKitchenDisplay();
-    }
+async function submitOrder() {
+  const t = translations[currentLanguage];
+  if (currentOrder.length === 0) {
+    showToast(t.pleaseAddItems, 'error', 2200);
+    return;
+  }
+  const customerName = document.getElementById('customer-name').value.trim() || `${t.order} #${orderCounter}`;
+
+  const order = {
+    id: orderCounter++,                 // compteur local pour l’UI côté prise de commandes
+    customerName,
+    items: [...currentOrder],
+    paymentType: selectedPayment,
+    status: 'pending',
+    timestamp: new Date().toLocaleString()
+  };
+
+  // Maj immédiate locale (UX)
+  orders.unshift(order);
+  saveData();
+  clearOrder();
+  showToast(`${t.orderSubmitted}${order.id}`, 'success', 2400);
+  renderActiveOrders();
+  if (document.getElementById('kitchen-display').classList.contains('active')) {
+    renderKitchenDisplay();
+  }
+
+  // Envoi au serveur -> il diffusera order:created
+  try {
+    const r = await fetch('/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(order)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    console.warn('POST /orders failed (offline ?)', e);
+  }
 }
 
-// Active orders in order-taking view
+
+// Active orders
 function renderActiveOrders() {
     const container = document.getElementById('active-orders');
     const pendingOrders = orders.filter(order => order.status !== 'completed');
     const t = translations[currentLanguage];
-    
     if (pendingOrders.length === 0) {
         container.innerHTML = `<p class="empty-message">${t.noActiveOrders}</p>`;
         return;
     }
-    
     container.innerHTML = '';
-    
     pendingOrders.forEach(order => {
         const div = document.createElement('div');
         div.className = 'active-order-item';
-        
         const itemNames = order.items.map(item => {
             const extras = item.extras.length > 0 ? ` (+${item.extras.join(', ')})` : '';
             return item.name + extras;
         }).join(', ');
-        
-        const paymentText = order.paymentType === 'cash' ? 
+        const paymentText = order.paymentType === 'cash' ?
             t.paid.replace('💵 ', '') : t.pending.replace('💳 ', '');
-        
         div.innerHTML = `
             <div class="active-order-info">
                 <h5>#${order.id} - ${order.customerName}</h5>
@@ -474,7 +516,6 @@ function renderActiveOrders() {
                 ${t.complete}
             </button>
         `;
-        
         container.appendChild(div);
     });
 }
@@ -483,7 +524,6 @@ function renderActiveOrders() {
 function renderKitchenDisplay() {
     const container = document.getElementById('kitchen-orders');
     const t = translations[currentLanguage];
-    
     if (orders.length === 0) {
         container.innerHTML = `
             <div class="no-orders">
@@ -493,16 +533,12 @@ function renderKitchenDisplay() {
         `;
         return;
     }
-    
     container.innerHTML = '';
-    
     orders.forEach(order => {
         const div = document.createElement('div');
         div.className = `order-card ${order.status} ${order.paymentType}`;
-        
         const itemsHtml = order.items.map(item => {
-            const extrasText = item.extras.length > 0 ? 
-                `<div class="kitchen-extras">+ ${item.extras.join(', ')}</div>` : '';
+            const extrasText = item.extras.length > 0 ? `<div class="kitchen-extras">+ ${item.extras.join(', ')}</div>` : '';
             return `
                 <div class="kitchen-item">
                     <h4>${item.name}</h4>
@@ -510,13 +546,10 @@ function renderKitchenDisplay() {
                 </div>
             `;
         }).join('');
-        
         const paymentStatusClass = order.paymentType === 'cash' ? 'cash' : 'pending';
-        const paymentStatusText = order.paymentType === 'cash' ? t.paid : t.pending;
-        
+        const paymentStatusText = order.paymentType === 'cash' ? translations[currentLanguage].paid : translations[currentLanguage].pending;
         const statusBadge = order.status === 'completed' ? 
-            `<span style="background: #4caf50; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">${t.completed}</span>` : '';
-        
+            `<span style="background: #4caf50; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">${translations[currentLanguage].completed}</span>` : '';
         div.innerHTML = `
             <div class="order-info">
                 <div class="order-header">
@@ -533,20 +566,30 @@ function renderKitchenDisplay() {
                 </div>
             </div>
         `;
-        
         container.appendChild(div);
     });
 }
 
-function completeOrder(orderId) {
-    const order = orders.find(o => o.id === orderId);
-    if (order) {
-        order.status = 'completed';
-        saveData();
-        renderKitchenDisplay();
-        renderActiveOrders();
-    }
+async function completeOrder(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (!order) return;
+
+  // Maj locale immédiate
+  order.status = 'completed';
+  saveData();
+  renderKitchenDisplay();
+  renderActiveOrders();
+  showToast(`Order #${orderId} completed`, 'success', 1600);
+
+  // Envoi au serveur -> il diffusera order:completed
+  try {
+    const r = await fetch(`/orders/${orderId}/complete`, { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    console.warn('complete failed, will resync via socket/poll', e);
+  }
 }
+
 
 // Menu management
 function renderMenuManagement() {
@@ -570,7 +613,6 @@ function renderMenuList() {
     const container = document.getElementById('menu-list');
     const t = translations[currentLanguage];
     container.innerHTML = '';
-    
     menuItems.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = 'menu-list-item';
@@ -586,7 +628,6 @@ function renderExtraList() {
     const container = document.getElementById('extra-list');
     const t = translations[currentLanguage];
     container.innerHTML = '';
-    
     extraItems.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = 'menu-list-item';
@@ -601,7 +642,6 @@ function renderExtraList() {
 function addMenuItem() {
     const input = document.getElementById('new-menu-item');
     const itemName = input.value.trim();
-    
     if (itemName && !menuItems.includes(itemName)) {
         menuItems.push(itemName);
         input.value = '';
@@ -609,13 +649,13 @@ function addMenuItem() {
         renderMenuItems();
         renderMenuList();
         updateJsonEditor();
+        showToast(`Added menu item: ${itemName}`, 'success', 1800);
     }
 }
 
 function addExtraItem() {
     const input = document.getElementById('new-extra-item');
     const itemName = input.value.trim();
-    
     if (itemName && !extraItems.includes(itemName)) {
         extraItems.push(itemName);
         input.value = '';
@@ -623,44 +663,59 @@ function addExtraItem() {
         renderExtraItems();
         renderExtraList();
         updateJsonEditor();
+        showToast(`Added extra: ${itemName}`, 'success', 1800);
     }
 }
 
 function deleteMenuItem(index) {
     const t = translations[currentLanguage];
     if (confirm(`${t.confirmDelete} ${t.menuItem}?`)) {
+        const name = menuItems[index];
         menuItems.splice(index, 1);
         saveMenuToJson();
         renderMenuItems();
         renderMenuList();
         updateJsonEditor();
+        showToast(`Deleted: ${name}`, 'info', 1600);
     }
 }
 
 function deleteExtraItem(index) {
     const t = translations[currentLanguage];
     if (confirm(`${t.confirmDelete} ${t.extraItem}?`)) {
+        const name = extraItems[index];
         extraItems.splice(index, 1);
         saveMenuToJson();
         renderExtraItems();
         renderExtraList();
         updateJsonEditor();
+        showToast(`Deleted: ${name}`, 'info', 1600);
     }
 }
 
-// Save menu to localStorage (since we can't write to JSON file directly)
-function saveMenuToJson() {
-    const menuConfig = {
-        restaurantName: 'Cuisine de Lin',
-        version: '1.0',
-        lastUpdated: new Date().toISOString(),
-        menuItems: [...menuItems],
-        extraItems: [...extraItems]
-    };
-    localStorage.setItem('restaurantMenu', JSON.stringify(menuConfig));
+// Save menu to json (backend + localStorage mirror)
+async function saveMenuToJson() {
+  const menuConfig = {
+    restaurantName: 'Cuisine de Lin',
+    version: '1.0',
+    lastUpdated: new Date().toISOString(),
+    menuItems: [...menuItems],
+    extraItems: [...extraItems]
+  };
+  try {
+    const r = await fetch('/menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(menuConfig)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    console.warn('Backend save failed, keeping local copy only:', e);
+  }
+  localStorage.setItem('restaurantMenu', JSON.stringify(menuConfig));
 }
 
-// JSON Menu Management Functions
+// Export / Import
 function exportMenuJson() {
     const t = translations[currentLanguage];
     const menuConfig = {
@@ -670,55 +725,42 @@ function exportMenuJson() {
         menuItems: [...menuItems],
         extraItems: [...extraItems]
     };
-    
     const jsonString = JSON.stringify(menuConfig, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
     const a = document.createElement('a');
     a.href = url;
     a.download = `cuisine-de-lin-menu-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
-    alert(t.jsonExported);
+    showToast(t.jsonExported, 'success', 1800);
 }
 
 function importMenuJson(event) {
     const t = translations[currentLanguage];
     const file = event.target.files[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
             const jsonData = JSON.parse(e.target.result);
-            
-            // Validate JSON structure
-            if (jsonData.menuItems && jsonData.extraItems && 
+            if (jsonData.menuItems && jsonData.extraItems &&
                 Array.isArray(jsonData.menuItems) && Array.isArray(jsonData.extraItems)) {
-                
                 menuItems = [...jsonData.menuItems];
                 extraItems = [...jsonData.extraItems];
-                
                 saveMenuToJson();
                 renderMenuItems();
                 renderExtraItems();
                 renderMenuManagement();
-                
-                alert(t.jsonImported);
+                showToast(t.jsonImported, 'success', 1800);
             } else {
-                alert(t.invalidJson);
+                showToast(t.invalidJson, 'error', 2400);
             }
         } catch (error) {
-            alert(t.invalidJson + '\n\nError: ' + error.message);
+            showToast(`${t.invalidJson}\n${error.message}`, 'error', 2600);
         }
     };
     reader.readAsText(file);
-    
-    // Reset file input
     event.target.value = '';
 }
 
@@ -727,41 +769,33 @@ function resetMenuToDefault() {
     if (confirm(t.confirmReset)) {
         menuItems = [...defaultMenuConfig.menuItems];
         extraItems = [...defaultMenuConfig.extraItems];
-        
         saveMenuToJson();
         renderMenuItems();
         renderExtraItems();
         renderMenuManagement();
-        
-        alert(t.jsonReset);
+        showToast(t.jsonReset, 'success', 2000);
     }
 }
 
 function applyJsonChanges() {
     const t = translations[currentLanguage];
     const jsonText = document.getElementById('json-editor').value;
-    
     try {
         const jsonData = JSON.parse(jsonText);
-        
-        // Validate JSON structure
-        if (jsonData.menuItems && jsonData.extraItems && 
+        if (jsonData.menuItems && jsonData.extraItems &&
             Array.isArray(jsonData.menuItems) && Array.isArray(jsonData.extraItems)) {
-            
             menuItems = [...jsonData.menuItems];
             extraItems = [...jsonData.extraItems];
-            
             saveMenuToJson();
             renderMenuItems();
             renderExtraItems();
             renderMenuManagement();
-            
-            alert(t.jsonApplied);
+            showToast(t.jsonApplied, 'success', 2000);
         } else {
-            alert(t.invalidJson);
+            showToast(t.invalidJson, 'error', 2400);
         }
     } catch (error) {
-        alert(t.invalidJson + '\n\nError: ' + error.message);
+        showToast(`${t.invalidJson}\n${error.message}`, 'error', 2600);
     }
 }
 
@@ -774,61 +808,64 @@ function hideEndOfDayModal() {
     document.getElementById('modal-overlay').classList.remove('active');
 }
 
-function endOfDay() {
+async function endOfDay() {
     const t = translations[currentLanguage];
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    
-    // Create end of day report
-    const dayReport = {
-        date: today,
-        totalOrders: orderCounter - 1,
-        orders: [...orders],
-        menuItems: [...menuItems],
-        extraItems: [...extraItems],
-        timestamp: new Date().toLocaleString()
-    };
-    
-    // Save daily report to localStorage with date key
-    const existingReports = JSON.parse(localStorage.getItem('restaurantDailyReports') || '{}');
-    existingReports[today] = dayReport;
-    localStorage.setItem('restaurantDailyReports', JSON.stringify(existingReports));
-    
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Build stats
+    const itemsStats = {};
+    const extrasStats = {};
+    for (const o of orders) {
+        for (const it of o.items) {
+            itemsStats[it.name] = (itemsStats[it.name] || 0) + 1;
+            for (const ex of (it.extras || [])) {
+                extrasStats[ex] = (extrasStats[ex] || 0) + 1;
+            }
+        }
+    }
+
+    // Save to backend: Dailys/items-YYYY-MM-DD.json + Dailys/orders-YYYY-MM-DD.json
+    try {
+        const resp = await fetch('/daily/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: today,
+                itemsStats,
+                extrasStats,
+                orders
+            })
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    } catch (e) {
+        showToast('Failed to write daily files. Data kept locally.', 'error', 3000);
+    }
+
     // Reset all data for new day
+    const totalOrders = orderCounter - 1;
     orders = [];
     orderCounter = 1;
     currentOrder = [];
     selectedExtras = [];
     selectedPayment = 'cash';
-    
-    // Clear current order form
     document.getElementById('customer-name').value = '';
-    document.querySelectorAll('.extra-item').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    
-    // Save reset state
+    document.querySelectorAll('.extra-item').forEach(btn => btn.classList.remove('selected'));
     saveData();
-    
-    // Hide modal
+
     hideEndOfDayModal();
-    
-    // Re-render everything
     renderCurrentOrder();
     renderActiveOrders();
     renderKitchenDisplay();
-    
-    // Show success message
-    alert(`${t.dayEndedSuccess}\n\n${t.totalOrdersToday}: ${dayReport.totalOrders}`);
+
+    showToast(`${t.dayEndedSuccess}  ${t.totalOrdersToday}: ${totalOrders}`, 'success', 3200);
 }
 
-// Auto-refresh kitchen display every 30 seconds
+// Auto-refresh kitchen display
 setInterval(() => {
     if (document.getElementById('kitchen-display').classList.contains('active')) {
         renderKitchenDisplay();
     }
 }, 30000);
 
-// Initialize the app when page loads
-document.addEventListener('DOMContentLoaded', () => {
-  initApp();
-});
+// Initialize after DOM is ready
+document.addEventListener('DOMContentLoaded', () => { initApp(); });

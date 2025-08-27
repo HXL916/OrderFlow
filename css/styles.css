@@ -808,3 +808,25 @@ body {
         flex-direction: column;
     }
 }
+
+/* Smaller card overall */
+.kitchen-display .order-card {
+    min-height: 100px;     /* smaller than before */
+    padding: 15px 20px;    /* tighter padding */
+}
+
+/* Item name: BIG and bold */
+.kitchen-display .kitchen-item h4 {
+    font-size: 2.5rem;     /* ≈ 40px, very visible */
+    font-weight: 900;
+    color: #000;
+    letter-spacing: 1px;
+}
+
+/* Extras still visible but secondary */
+.kitchen-display .kitchen-extras {
+    font-size: 1.2rem;
+    color: #444;
+    font-style: italic;
+    margin-top: 4px;
+}
