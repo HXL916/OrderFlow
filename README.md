@@ -38,7 +38,18 @@ other machines (replace `localhost` with your computer's IP).
 
 ## 📦 Packaged App
 
-You can build a **standalone executable** for Windows:
+A ready-to-use **OrderFlow.exe** is available
+in the [GitHub Releases](../../releases) section of this repository.  
+
+➡️ Just download **OrderFlow.exe**, then **double-click to run**.  
+
+
+
+---
+
+### Building it yourself
+
+You can also build the executable locally:
 
 ```bash
 npm run exe
@@ -53,8 +64,7 @@ dist/
  └─ Dailys/             # daily reports
 ```
 
-➡️ Distribute the whole `dist/` folder.  
-Users just double-click **OrderFlow.exe** to run the app.  
+Distribute the whole `dist/` folder.  
 All orders, menu configs, and daily files are saved inside `data/` and `Dailys/`.
 
 ---
