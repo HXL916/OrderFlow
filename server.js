@@ -2,21 +2,35 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server); // Socket.IO sur le même port
+const io = new Server(server);
 
-// === Paths ===
+// ---------- Writable root ----------
+// For packaged EXE, write beside the EXE (dist/)
+// For dev, write into project folder (__dirname)
+function resolveWritableRoot() {
+  if (process.env.ORDERFLOW_DATA_DIR) return path.resolve(process.env.ORDERFLOW_DATA_DIR);
+  if (process.pkg) return path.dirname(process.execPath);
+  return __dirname;
+}
+const WRITABLE_ROOT = resolveWritableRoot();
+fs.mkdirSync(WRITABLE_ROOT, { recursive: true });
+
+// Snapshot (read-only) root for static assets:
 const ROOT = __dirname;
-const DATA_DIR = path.join(ROOT, 'data');
-const DAILYS_DIR = path.join(ROOT, 'Dailys');
-const MENU_JSON = path.join(DATA_DIR, 'menu.json');
-const ORDERS_JSON = path.join(DATA_DIR, 'orders.json');
 
-// === Utils ===
+// Paths under the writable root (beside EXE in dist/)
+const DATA_DIR   = path.join(WRITABLE_ROOT, 'data');
+const DAILYS_DIR = path.join(WRITABLE_ROOT, 'Dailys');
+const MENU_JSON  = path.join(DATA_DIR, 'menu.json');
+const ORDERS_JSON= path.join(DATA_DIR, 'orders.json');
+
+// ---------- helpers ----------
 function readJsonSafe(file, fallback) {
   try {
     if (!fs.existsSync(file)) return fallback;
@@ -27,21 +41,59 @@ function readJsonSafe(file, fallback) {
   }
 }
 function writeJsonSafe(file, data) {
-  try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('writeJsonSafe error:', e);
-    throw e;
-  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// === Middlewares ===
-app.use(express.json({ limit: '2mb' }));
-app.use(express.static(ROOT, { etag: false, lastModified: true, maxAge: 0 }));
+// Seed writable /data from snapshot’s /data (first run only)
+function seedDataIfMissing() {
+  try {
+    if (fs.existsSync(MENU_JSON)) return; // already seeded
+    const snapshotDataDir = path.join(ROOT, 'data');
+    const snapshotMenu = path.join(snapshotDataDir, 'menu.json');
+    if (fs.existsSync(snapshotMenu)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.copyFileSync(snapshotMenu, MENU_JSON);
+      console.log('Seeded data/menu.json to writable area.');
+    } else {
+      // create a minimal default
+      writeJsonSafe(MENU_JSON, {
+        restaurantName: 'Cuisine de Lin',
+        version: '1.0',
+        lastUpdated: new Date().toISOString(),
+        menuItems: ['Poutine','Burger','Chicken Wings'],
+        extraItems: ['Extra Sauce','Extra Cheese']
+      });
+      console.log('Created default menu.json in writable area.');
+    }
+  } catch (e) {
+    console.warn('Failed to seed data:', e.message);
+  }
+}
+seedDataIfMissing();
 
-// === MENU ===
-// GET current menu
+// Optional: clear orders on start (set env CLEAR_ORDERS_ON_START=1)
+if (process.env.CLEAR_ORDERS_ON_START === '1') {
+  try { writeJsonSafe(ORDERS_JSON, []); } catch {}
+}
+
+// ---------- middleware ----------
+app.use(express.json({ limit: '2mb' }));
+// Serve static app (from snapshot / project)
+app.use(express.static(ROOT, { etag:false, lastModified:true, maxAge:0 }));
+
+// Debug: see where files go
+app.get('/where', (req, res) => {
+  res.json({
+    snapshotRoot: ROOT,
+    exeDir: process.pkg ? path.dirname(process.execPath) : null,
+    writableRoot: WRITABLE_ROOT,
+    dataDir: DATA_DIR,
+    dailysDir: DAILYS_DIR
+  });
+});
+
+// ---------- MENU ----------
 app.get('/menu', (req, res) => {
   try {
     if (!fs.existsSync(MENU_JSON)) return res.json({ menuItems: [], extraItems: [] });
@@ -52,17 +104,15 @@ app.get('/menu', (req, res) => {
   }
 });
 
-// POST updated menu
 app.post('/menu', (req, res) => {
-  const { menuItems, extraItems, restaurantName = 'Cuisine de Lin', version = '1.0' } = req.body || {};
+  const { menuItems, extraItems, restaurantName='Cuisine de Lin', version='1.0' } = req.body || {};
   if (!Array.isArray(menuItems) || !Array.isArray(extraItems)) {
     return res.status(400).json({ error: 'invalid schema: need menuItems[], extraItems[]' });
   }
   try {
-    writeJsonSafe(
-      MENU_JSON,
-      { restaurantName, version, lastUpdated: new Date().toISOString(), menuItems, extraItems }
-    );
+    writeJsonSafe(MENU_JSON, {
+      restaurantName, version, lastUpdated: new Date().toISOString(), menuItems, extraItems
+    });
     res.json({ ok: true });
   } catch (e) {
     console.error('POST /menu', e);
@@ -70,8 +120,7 @@ app.post('/menu', (req, res) => {
   }
 });
 
-// === DAILY FILES ===
-// Save daily stats + orders into Dailys/
+// ---------- DAILYS ----------
 app.post('/daily/save', (req, res) => {
   try {
     const { date, itemsStats, extrasStats, orders } = req.body || {};
@@ -83,23 +132,12 @@ app.post('/daily/save', (req, res) => {
     }
     fs.mkdirSync(DAILYS_DIR, { recursive: true });
 
-    const itemsFile = path.join(DAILYS_DIR, `items-${date}.json`);
+    const itemsFile  = path.join(DAILYS_DIR, `items-${date}.json`);
     const ordersFile = path.join(DAILYS_DIR, `orders-${date}.json`);
 
-    writeJsonSafe(itemsFile, {
-      date,
-      itemsStats,
-      extrasStats,
-      savedAt: new Date().toISOString()
-    });
+    writeJsonSafe(itemsFile,  { date, itemsStats, extrasStats, savedAt: new Date().toISOString() });
+    writeJsonSafe(ordersFile, { date, orders,      savedAt: new Date().toISOString() });
 
-    writeJsonSafe(ordersFile, {
-      date,
-      orders,
-      savedAt: new Date().toISOString()
-    });
-
-    // (optionnel) on vide le fichier des commandes du jour courant côté serveur ici si besoin
     res.json({ ok: true, itemsFile, ordersFile });
   } catch (e) {
     console.error('POST /daily/save', e);
@@ -107,31 +145,29 @@ app.post('/daily/save', (req, res) => {
   }
 });
 
-// === ORDERS (partagé) ===
-// Lister toutes les commandes
+// ---------- ORDERS ----------
 app.get('/orders', (req, res) => {
-  const orders = readJsonSafe(ORDERS_JSON, []);
-  res.json({ orders });
+  res.json({ orders: readJsonSafe(ORDERS_JSON, []) });
 });
 
-// Créer une commande
 app.post('/orders', (req, res) => {
   const order = req.body;
-  if (!order || typeof order.id !== 'number' || !Array.isArray(order.items)) {
+  if (!order || !Array.isArray(order.items) || !order.items.length) {
     return res.status(400).json({ error: 'invalid order' });
   }
   const orders = readJsonSafe(ORDERS_JSON, []);
-  // éviter doublon par ID
-  const exists = orders.find(o => o.id === order.id);
-  if (!exists) orders.unshift(order);
+  // assign ID if missing or colliding
+  if (typeof order.id !== 'number' || orders.some(o => o.id === order.id)) {
+    const max = orders.reduce((m, o) => Math.max(m, o.id || 0), 0);
+    order.id = max + 1;
+  }
+  orders.unshift(order);
   writeJsonSafe(ORDERS_JSON, orders);
 
-  // push en temps réel
   io.emit('order:created', order);
-  res.json({ ok: true });
+  res.json({ ok: true, order });
 });
 
-// Marquer une commande terminée
 app.post('/orders/:id/complete', (req, res) => {
   const id = Number(req.params.id);
   const orders = readJsonSafe(ORDERS_JSON, []);
@@ -139,29 +175,25 @@ app.post('/orders/:id/complete', (req, res) => {
   if (!o) return res.status(404).json({ error: 'not found' });
   o.status = 'completed';
   writeJsonSafe(ORDERS_JSON, orders);
-
-  // push en temps réel
   io.emit('order:completed', { id });
   res.json({ ok: true });
 });
 
-// Réinitialiser toutes les commandes (utilisé à la fin de journée)
 app.post('/orders/reset', (req, res) => {
   writeJsonSafe(ORDERS_JSON, []);
   io.emit('orders:reset');
   res.json({ ok: true });
 });
 
-// === WebSockets ===
+// ---------- sockets ----------
 io.on('connection', (socket) => {
-  // envoyer l'état initial des commandes au nouvel écran
-  const orders = readJsonSafe(ORDERS_JSON, []);
-  socket.emit('orders:init', orders);
+  socket.emit('orders:init', readJsonSafe(ORDERS_JSON, []));
 });
 
-// === Start ===
+// ---------- start ----------
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
-  console.log(`Order app at http://localhost:${PORT}/`);
-  console.log(`Static root: ${ROOT}`);
+  console.log(`OrderFlow @ http://localhost:${PORT}/`);
+  console.log(`Static (snapshot): ${ROOT}`);
+  console.log(`Writable root:     ${WRITABLE_ROOT}`);
 });
