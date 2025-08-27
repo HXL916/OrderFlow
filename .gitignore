@@ -66,3 +66,4 @@ build/
 # Backup files
 *.bak
 *.backup
+/.history
