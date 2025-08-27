@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuisine de Lin</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🍽️ Cuisine de Lin</h1>
+            <div class="header-controls">
+                <div class="language-toggle">
+                    <button class="lang-btn active" data-lang="en">EN</button>
+                    <button class="lang-btn" data-lang="fr">FR</button>
+                </div>
+                <div class="view-toggle">
+                    <button class="toggle-btn active" data-view="order-taking">📝 <span class="btn-text">Take Orders</span></button>
+                    <button class="toggle-btn" data-view="kitchen-display">👨‍🍳 <span class="btn-text">Kitchen Display</span></button>
+                    <button class="toggle-btn" data-view="menu-management">⚙️ <span class="btn-text">Menu Management</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Taking View -->
+        <div id="order-taking" class="view active">
+            <div class="order-section">
+                <div class="menu-panel">
+                    <h2><span class="text" data-key="menu">📋 Menu</span></h2>
+                    <div class="menu-items" id="menu-items">
+                        <!-- Menu items will be populated here -->
+                    </div>
+                    
+                    <div class="extras">
+                        <h3><span class="text" data-key="addExtras">➕ Add Extras</span></h3>
+                        <div class="extra-items" id="extra-items">
+                            <!-- Extra items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="right-panels">
+                    <div class="order-panel">
+                        <h2><span class="text" data-key="currentOrder">🛒 Current Order</span></h2>
+                        <div class="current-order" id="current-order">
+                            <p class="empty-message text" data-key="selectItems">Select items from the menu to start an order</p>
+                        </div>
+                        
+                        <button class="clear-order" id="clear-order-btn">🗑️ <span class="text" data-key="clearOrder">Clear Order</span></button>
+                        
+                        <div class="customer-info">
+                            <input type="text" id="customer-name" class="text" data-key="customerName" />
+                        </div>
+                        
+                        <div class="payment-options">
+                            <h3>💳 <span class="text" data-key="payment">Payment</span></h3>
+                            <button class="payment-btn selected" id="cash-btn">💵 <span class="text" data-key="cashPaid">Cash (Paid)</span></button>
+                            <button class="payment-btn" id="card-btn">💳 <span class="text" data-key="cardPending">Card (Pending)</span></button>
+                        </div>
+                        
+                        <button class="submit-order" id="submit-order-btn">✅ <span class="text" data-key="submitOrder">Submit Order</span></button>
+                    </div>
+
+                    <div class="active-orders-panel">
+                        <h2><span class="text" data-key="activeOrders">📋 Active Orders</span></h2>
+                        <div id="active-orders">
+                            <p class="empty-message text" data-key="noActiveOrders">No active orders</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kitchen Display View -->
+        <div id="kitchen-display" class="view">
+            <div class="kitchen-display" id="kitchen-orders">
+                <div class="no-orders">
+                    <h3 class="text" data-key="noOrdersYet">No orders yet</h3>
+                    <p class="text" data-key="ordersWillAppear">Orders will appear here once they are submitted</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Menu Management View -->
+        <div id="menu-management" class="view">
+            <div class="menu-management">
+                <h2><span class="text" data-key="jsonMenuConfig">📁 JSON Menu Configuration</span></h2>
+                <div class="json-controls">
+                    <h3><span class="text" data-key="importExportMenu">Import/Export Menu</span></h3>
+                    <div class="json-buttons">
+                        <button class="json-btn export" id="export-json-btn">📤 <span class="text" data-key="exportJson">Export JSON</span></button>
+                        <button class="json-btn import" id="import-json-btn">📥 <span class="text" data-key="importJson">Import JSON</span></button>
+                        <input type="file" id="json-file-input" class="file-input" accept=".json" />
+                        <button class="json-btn reset" id="reset-menu-btn">🔄 <span class="text" data-key="resetToDefault">Reset to Default</span></button>
+                    </div>
+                    <textarea class="json-textarea" id="json-editor" placeholder="JSON menu configuration will appear here..."></textarea>
+                    <div class="json-buttons">
+                        <button class="json-btn import" id="apply-json-btn">✅ <span class="text" data-key="applyChanges">Apply Changes</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="menu-management">
+                <h2><span class="text" data-key="menuItems">🍕 Menu Items</span></h2>
+                <div class="add-item-form">
+                    <input type="text" id="new-menu-item" class="text" data-key="enterMenuItemName" />
+                    <button class="add-btn" id="add-menu-btn">➕ <span class="text" data-key="addItem">Add Item</span></button>
+                </div>
+                <div class="menu-list" id="menu-list">
+                    <!-- Menu items list will be populated here -->
+                </div>
+            </div>
+
+            <div class="menu-management">
+                <h2><span class="text" data-key="extraItems">➕ Extra Items</span></h2>
+                <div class="add-item-form">
+                    <input type="text" id="new-extra-item" class="text" data-key="enterExtraItemName" />
+                    <button class="add-btn" id="add-extra-btn">➕ <span class="text" data-key="addExtra">Add Extra</span></button>
+                </div>
+                <div class="menu-list" id="extra-list">
+                    <!-- Extra items list will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- End of Day Button -->
+    <button class="end-of-day-btn" id="end-of-day-btn">
+        🏪 <span class="text" data-key="endOfDay">End of Day</span>
+    </button>
+
+    <!-- End of Day Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <h2>🏪 <span class="text" data-key="endOfDayTitle">End of Day</span></h2>
+            <p class="text" data-key="endOfDayMessage">This will save today's data and reset everything for tomorrow. All current orders and counters will be cleared. Are you sure?</p>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="cancel-end-day">
+                    <span class="text" data-key="cancel">Cancel</span>
+                </button>
+                <button class="modal-btn confirm" id="confirm-end-day">
+                    🏪 <span class="text" data-key="confirmEndDay">Yes, End Day</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

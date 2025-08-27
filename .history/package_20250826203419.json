@@ -1,0 +1,33 @@
+{
+  "name": "cuisine-de-lin",
+  "version": "1.0.0",
+  "description": "Restaurant order management system for Cuisine de Lin",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server . -p 3000 -o",
+    "dev": "npx live-server --port=3000",
+    "build": "echo 'No build step required for static app'",
+    "test": "echo 'No tests configured yet'"
+  },
+  "keywords": [
+    "restaurant",
+    "orders",
+    "pos",
+    "kitchen-display",
+    "management"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "live-server": "^1.2.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/cuisine-de-lin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/cuisine-de-lin/issues"
+  },
+  "homepage": "https://github.com/yourusername/cuisine-de-lin#readme"
+}

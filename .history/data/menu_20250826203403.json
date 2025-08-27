@@ -1,0 +1,25 @@
+{
+  "restaurantName": "Cuisine de Lin",
+  "version": "1.0",
+  "lastUpdated": "2025-01-27T10:00:00.000Z",
+  "menuItems": [
+    "Poutine",
+    "Burger",
+    "Chicken Wings",
+    "Fish & Chips",
+    "Grilled Cheese",
+    "Caesar Salad",
+    "Club Sandwich",
+    "Fish Tacos"
+  ],
+  "extraItems": [
+    "Extra Sauce",
+    "Extra Cheese",
+    "Fried Chicken",
+    "Bacon",
+    "Mushrooms",
+    "Onions",
+    "Avocado",
+    "Spicy Mayo"
+  ]
+}
