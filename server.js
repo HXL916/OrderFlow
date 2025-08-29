@@ -10,6 +10,20 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ---------- Get Network IP ----------
+function getNetworkIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (loopback) and non-IPv4 addresses
+      if (!iface.internal && iface.family === 'IPv4') {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost'; // fallback
+}
+
 // ---------- Writable root ----------
 // For packaged EXE, write beside the EXE (dist/)
 // For dev, write into project folder (__dirname)
@@ -45,7 +59,7 @@ function writeJsonSafe(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
 }
 
-// Seed writable /data from snapshot’s /data (first run only)
+// Seed writable /data from snapshot's /data (first run only)
 function seedDataIfMissing() {
   try {
     if (fs.existsSync(MENU_JSON)) return; // already seeded
@@ -192,8 +206,23 @@ io.on('connection', (socket) => {
 
 // ---------- start ----------
 const PORT = process.env.PORT || 8000;
-server.listen(PORT, () => {
-  console.log(`OrderFlow @ http://localhost:${PORT}/`);
-  console.log(`Static (snapshot): ${ROOT}`);
-  console.log(`Writable root:     ${WRITABLE_ROOT}`);
+const HOST = '0.0.0.0'; // Listen on all network interfaces
+
+server.listen(PORT, HOST, () => {
+  const networkIP = getNetworkIP();
+  const localURL = `http://localhost:${PORT}/`;
+  const networkURL = `http://${networkIP}:${PORT}/`;
+  
+  console.log('========================================');
+  console.log('🍔 OrderFlow Server Started Successfully!');
+  console.log('========================================');
+  console.log(`📍 Local access:   ${localURL}`);
+  console.log(`🌐 Network access: ${networkURL}`);
+  console.log('----------------------------------------');
+  console.log('💡 Other devices can connect using:');
+  console.log(`   ${networkURL}`);
+  console.log('========================================');
+  console.log(`📁 Static files:   ${ROOT}`);
+  console.log(`💾 Data directory: ${WRITABLE_ROOT}`);
+  console.log('========================================');
 });
